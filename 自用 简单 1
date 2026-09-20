@@ -1,0 +1,24 @@
+# 定义异步等待函数，用于同步等待 WinRT 异步操作完成
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? { 
+    $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and 
+    $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' 
+})[0]
+
+Function Await($WinRtTask, $ResultType) {
+    $asTask = $asTaskGeneric.MakeGenericMethod($ResultType)
+    $netTask = $asTask.Invoke($null, @($WinRtTask))
+    $netTask.Wait(-1) | Out-Null
+    $netTask.Result
+}
+
+# 获取当前互联网连接配置文件
+$connectionProfile = [Windows.Networking.Connectivity.NetworkInformation,Windows.Networking.Connectivity,ContentType=WindowsRuntime]::GetInternetConnectionProfile()
+
+# 创建热点管理器
+$tetheringManager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]::CreateFromConnectionProfile($connectionProfile)
+
+# 检查热点状态，仅在未开启时启动，避免重复操作
+if ($tetheringManager.TetheringOperationalState -ne 1) {
+    Await ($tetheringManager.StartTetheringAsync()) ([Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult])
+}
